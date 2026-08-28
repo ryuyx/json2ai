@@ -18,10 +18,27 @@ describe("json2ai", () => {
     );
   });
 
-  it("formats arrays with index labels", () => {
+  it("formats primitive arrays inline", () => {
     expect(json2ai({ tags: ["a", "b"] })).toBe(
-      "tags:\n 0: a\n 1: b"
+      "tags:\n 0 a\n 1 b"
     );
+  });
+
+  it("formats arrays of homogeneous objects as a table", () => {
+    expect(
+      json2ai({
+        users: [
+          { id: 1, name: "a" },
+          { id: 2, name: "b" },
+        ],
+      })
+    ).toBe("users:\n index\tid\tname\n 0\t1\ta\n 1\t2\tb");
+  });
+
+  it("expands heterogeneous object arrays", () => {
+    expect(
+      json2ai({ arr: [{ id: 1, extra: "x" }, { id: 2 }] })
+    ).toBe("arr:\n 0:\n  id: 1\n  extra: x\n 1:\n  id: 2");
   });
 
   it("handles primitives at the top level", () => {
@@ -44,8 +61,9 @@ describe("json2ai", () => {
   it("truncates large arrays", () => {
     const input = { list: [1, 2, 3, 4, 5] };
     const out = json2ai(input, { maxArrayItems: 3 });
-    expect(out).toContain("... (2 more)[5]");
-    expect(out).not.toContain("4:");
+    expect(out).toBe(
+      "list:\n 0 1\n 1 2\n 2 3\n ... (2 more)[5]"
+    );
   });
 
   it("omits matching keys at any depth", () => {

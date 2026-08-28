@@ -145,19 +145,74 @@ function formatArray(
   }
 
   const pad = indent.repeat(depth);
-  const childDepth = depth + 1;
 
   if (maxArrayItems !== undefined && arr.length > maxArrayItems) {
     const shown = arr.slice(0, maxArrayItems);
-    const body = shown
-      .map((item) => `${pad}${indent}- ${formatValue(item, 0, indent, maxArrayItems, omitSet)}`)
-      .join("\n");
     const skipped = arr.length - maxArrayItems;
+    const body = formatArrayBody(shown, depth, indent, maxArrayItems, omitSet);
     return `${body}\n${pad}... (${skipped} more)[${arr.length}]`;
   }
 
+  return formatArrayBody(arr, depth, indent, maxArrayItems, omitSet);
+}
+
+function formatArrayBody(
+  arr: unknown[],
+  depth: number,
+  indent: string,
+  maxArrayItems: number | undefined,
+  omitSet: Set<string>
+): string {
+  const pad = indent.repeat(depth);
+  const childDepth = depth + 1;
+
+  // Table style for arrays of homogeneous flat objects: emit a header with the
+  // field names once, then one compact row per item. This avoids repeating the
+  // same keys for every element, which is both compact and AI-friendly.
+  if (arr.length > 0 && arr.every(isPlainObject)) {
+    const keySet = new Set<string>();
+    let homogeneous = true;
+    for (const obj of arr as Record<string, unknown>[]) {
+      const keys = Object.keys(obj).filter((k) => !omitSet.has(k));
+      if (keySet.size === 0) {
+        keys.forEach((k) => keySet.add(k));
+      } else if (
+        keys.length !== keySet.size ||
+        !keys.every((k) => keySet.has(k))
+      ) {
+        homogeneous = false;
+        break;
+      }
+    }
+
+    if (homogeneous && keySet.size > 0) {
+      const keys = Array.from(keySet);
+      const rows = arr.map((obj, i) => {
+        const rec = obj as Record<string, unknown>;
+        const cells = keys.map((k) =>
+          formatPrimitive(rec[k]).replace(/\s+/g, " ").trim()
+        );
+        return `${pad}${i}\t${cells.join("\t")}`;
+      });
+      const header = `${pad}index\t${keys.join("\t")}`;
+      return [header, ...rows].join("\n");
+    }
+  }
+
+  // Fallback: nested / heterogeneous items, expand each value.
   return arr
-    .map((item, i) => `${pad}${i}: ${formatValue(item, childDepth, indent, maxArrayItems, omitSet)}`)
+    .map((item, i) => {
+      if (isPlainObject(item)) {
+        // Keep nested objects on their own lines under the index.
+        return `${pad}${i}:\n${formatValue(item, childDepth, indent, maxArrayItems, omitSet)}`;
+      }
+      if (Array.isArray(item)) {
+        const body = formatValue(item, childDepth, indent, maxArrayItems, omitSet);
+        return `${pad}${i}:\n${body}`;
+      }
+      const v = formatPrimitive(item).replace(/\s+/g, " ").trim();
+      return `${pad}${i} ${v}`;
+    })
     .join("\n");
 }
 
