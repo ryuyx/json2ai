@@ -10,6 +10,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": true,
+    "rootDir": "src",
     "outDir": "dist"
   },
   "include": ["src"]
