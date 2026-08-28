@@ -24,6 +24,10 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ryuyx/json2ai.git"
+  },
   "keywords": [
     "json",
     "markdown",
