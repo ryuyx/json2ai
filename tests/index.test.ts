@@ -18,13 +18,13 @@ describe("json2ai", () => {
     );
   });
 
-  it("formats primitive arrays inline", () => {
+  it("formats primitive arrays as a md table", () => {
     expect(json2ai({ tags: ["a", "b"] })).toBe(
-      "tags:\n 0 a\n 1 b"
+      "tags:\n a, b"
     );
   });
 
-  it("formats arrays of homogeneous objects as a table", () => {
+  it("formats arrays of homogeneous objects with scalar leaves as an md table", () => {
     expect(
       json2ai({
         users: [
@@ -32,10 +32,38 @@ describe("json2ai", () => {
           { id: 2, name: "b" },
         ],
       })
-    ).toBe("users:\n index\tid\tname\n 0\t1\ta\n 1\t2\tb");
+    ).toBe(
+      "users:\n | index | id | name |\n | --- | --- | --- |\n | 0 | 1 | a |\n | 1 | 2 | b |"
+    );
   });
 
-  it("expands heterogeneous object arrays", () => {
+  it("fuses nested sub-objects into cells as compact inline json", () => {
+    expect(
+      json2ai({
+        logs: [
+          { id: 1, ctx: { u: 3, r: { id: "x" } } },
+          { id: 2, ctx: { u: 4, r: { id: "y" } } },
+        ],
+      })
+    ).toBe(
+      "logs:\n | index | id | ctx |\n | --- | --- | --- |\n | 0 | 1 | {u:3 r:{id:x}} |\n | 1 | 2 | {u:4 r:{id:y}} |"
+    );
+  });
+
+  it("fuses nested object arrays into cells", () => {
+    expect(
+      json2ai({
+        orders: [
+          { id: 1, items: [{ sku: "a", qty: 2 }, { sku: "b", qty: 1 }] },
+          { id: 2, items: [{ sku: "c", qty: 4 }] },
+        ],
+      })
+    ).toBe(
+      "orders:\n | index | id | items |\n | --- | --- | --- |\n | 0 | 1 | [{sku:a qty:2} {sku:b qty:1}] |\n | 1 | 2 | [{sku:c qty:4}] |"
+    );
+  });
+
+  it("falls back to expansion for heterogeneous object arrays", () => {
     expect(
       json2ai({ arr: [{ id: 1, extra: "x" }, { id: 2 }] })
     ).toBe("arr:\n 0:\n  id: 1\n  extra: x\n 1:\n  id: 2");
@@ -54,15 +82,15 @@ describe("json2ai", () => {
 
   it("wraps in a code block when requested", () => {
     expect(json2ai({ a: 1 }, { wrapInCodeBlock: true })).toBe(
-      "```json\na: 1\n```"
+      "```text\na: 1\n```"
     );
   });
 
-  it("truncates large arrays", () => {
-    const input = { list: [1, 2, 3, 4, 5] };
-    const out = json2ai(input, { maxArrayItems: 3 });
+  it("truncates large arrays after rendering the table", () => {
+    const input = { list: [{ id: 1 }, { id: 2 }, { id: 3 }] };
+    const out = json2ai(input, { maxArrayItems: 2 });
     expect(out).toBe(
-      "list:\n 0 1\n 1 2\n 2 3\n ... (2 more)[5]"
+      "list:\n | index | id |\n | --- | --- |\n | 0 | 1 |\n | 1 | 2 |\n ... (1 more)[3]"
     );
   });
 
@@ -72,8 +100,38 @@ describe("json2ai", () => {
     ).toBe("id: 1\nnested:\n keep: 2");
   });
 
+  it("omits fused container keys too", () => {
+    expect(
+      json2ai(
+        {
+          logs: [
+            { id: 1, ctx: { u: 3, token: "x" } },
+            { id: 2, ctx: { u: 4, token: "y" } },
+          ],
+        },
+        { omit: ["token"] }
+      )
+    ).toBe(
+      "logs:\n | index | id | ctx |\n | --- | --- | --- |\n | 0 | 1 | {u:3} |\n | 1 | 2 | {u:4} |"
+    );
+  });
+
+  it("escapes pipes inside table cells", () => {
+    const out = json2ai({ rows: [{ a: "x|y" }, { a: "z" }] });
+    expect(out).toContain("x\\|y");
+  });
+
   it("escapes code fences inside strings", () => {
     const out = json2ai({ code: "fence ``` here" });
     expect(out).toContain("\\`\\`\\`");
+  });
+
+  it("supports tsv format", () => {
+    expect(
+      json2ai(
+        { users: [{ id: 1, name: "a" }, { id: 2, name: "b" }] },
+        { format: "tsv" }
+      )
+    ).toBe("users:\n index\tid\tname\n 0\t1\ta\n 1\t2\tb");
   });
 });
