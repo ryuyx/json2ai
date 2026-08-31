@@ -46,6 +46,21 @@ once, one row per item) to avoid repeating the same keys and wasting tokens —
 friendlier for LLMs than raw JSON. Nested sub-objects and sub-arrays are fused into
 their cell as compact inline notation (`{u:3 r:{id:x}}`) instead of nesting deeper.
 
+## Token savings
+
+By dropping JSON's syntax overhead (quotes, braces, colons, commas) and emitting
+repeated structural keys only once, `json2ai` shrinks the payload a well-known model
+needs to read. Measured in characters (a reasonable token proxy), four representative
+inputs — arrays of objects with repeated keys and nested records — shrink by about
+one-third in `md` format and by roughly half in the more compact `tsv` format:
+
+![Token savings with json2ai](docs/json2ai_tokens.png)
+
+Per-sample reduction: `users ×50` −34% md / −54% tsv, `users ×500` −34% / −52%,
+`orders ×30` −35% / −48%, `orders ×200` −36% / −47%. Savings grow with redundancy:
+the more repeated keys and nested structure a payload has, the more a reader can
+drop. Regenerate the chart with `python3 scripts/plot_tokens.py`.
+
 ## API
 
 `json2ai(value, options?) => string`
