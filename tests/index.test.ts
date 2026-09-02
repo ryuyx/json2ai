@@ -134,4 +134,163 @@ describe("json2ai", () => {
       )
     ).toBe("users:\n index\tid\tname\n 0\t1\ta\n 1\t2\tb");
   });
+
+  it("renames a top-level key", () => {
+    expect(json2ai({ name: "a" }, { rename: { name: "fullName" } })).toBe(
+      "fullName: a"
+    );
+  });
+
+  it("renames a nested key", () => {
+    expect(
+      json2ai(
+        { user: { first: "a", last: "b" } },
+        { rename: { "user.first": "given" } }
+      )
+    ).toBe("user:\n given: a\n last: b");
+  });
+
+  it("renames only the matching path, not same-named keys elsewhere", () => {
+    expect(
+      json2ai(
+        { user: { first: "a" }, first: 1 },
+        { rename: { "user.first": "given" } }
+      )
+    ).toBe("user:\n given: a\nfirst: 1");
+  });
+
+  it("treats object-form rename without a unit as equivalent to a string", () => {
+    expect(json2ai({ name: "a" }, { rename: { name: { alias: "fullName" } } })).toBe(
+      "fullName: a"
+    );
+  });
+
+  it("renames column headers in a Markdown table", () => {
+    expect(
+      json2ai(
+        { users: [{ id: 1, name: "a" }, { id: 2, name: "b" }] },
+        { rename: { "users.name": "label" } }
+      )
+    ).toBe(
+      "users:\n | index | id | label |\n | --- | --- | --- |\n | 0 | 1 | a |\n | 1 | 2 | b |"
+    );
+  });
+
+  it("renames column headers in a TSV table", () => {
+    expect(
+      json2ai(
+        { users: [{ id: 1, name: "a" }, { id: 2, name: "b" }] },
+        { rename: { "users.name": "label" }, format: "tsv" }
+      )
+    ).toBe("users:\n index\tid\tlabel\n 0\t1\ta\n 1\t2\tb");
+  });
+
+  it("renames keys fused inside inline cells", () => {
+    expect(
+      json2ai(
+        { logs: [{ id: 1, ctx: { u: 3 } }, { id: 2, ctx: { u: 4 } }] },
+        { rename: { "logs.ctx.u": "user" } }
+      )
+    ).toBe(
+      "logs:\n | index | id | ctx |\n | --- | --- | --- |\n | 0 | 1 | {user:3} |\n | 1 | 2 | {user:4} |"
+    );
+  });
+
+  it("appends a unit to a top-level scalar", () => {
+    expect(json2ai({ price: 100 }, { rename: { price: { unit: "USD" } } })).toBe(
+      "price: 100 USD"
+    );
+  });
+
+  it("appends a unit to a scalar in a table cell", () => {
+    expect(
+      json2ai(
+        { products: [{ name: "a", price: 100 }] },
+        { rename: { "products.price": { unit: "USD" } } }
+      )
+    ).toBe(
+      "products:\n | index | name | price |\n | --- | --- | --- |\n | 0 | a | 100 USD |"
+    );
+  });
+
+  it("combines alias and unit", () => {
+    expect(json2ai({ qty: 3 }, { rename: { qty: { alias: "count", unit: "pcs" } } })).toBe(
+      "count: 3 pcs"
+    );
+  });
+
+  it("ignores a unit on a container value", () => {
+    expect(
+      json2ai(
+        { user: { id: 1 } },
+        { rename: { user: { unit: "USD" } } }
+      )
+    ).toBe("user:\n id: 1");
+  });
+
+  it("leaves output unchanged when rename is empty or absent", () => {
+    const data = { user: { id: 1, name: "a" }, tags: ["x", "y"] };
+    const expected = "user:\n id: 1\n name: a\ntags:\n x, y";
+    expect(json2ai(data)).toBe(expected);
+    expect(json2ai(data, { rename: {} })).toBe(expected);
+  });
+
+  it("gives omit precedence over rename", () => {
+    expect(
+      json2ai({ id: 1, secret: "shh" }, { rename: { secret: "token" }, omit: ["secret"] })
+    ).toBe("id: 1");
+  });
+
+  it("converts a seconds timestamp to ISO 8601 UTC", () => {
+    expect(
+      json2ai({ created: 1756814400 }, { rename: { created: { type: "date" } } })
+    ).toBe("created: 2025-09-02T12:00:00.000Z");
+  });
+
+  it("converts a milliseconds timestamp by magnitude auto-detection", () => {
+    expect(
+      json2ai({ created: 1756814400000 }, { rename: { created: { type: "date" } } })
+    ).toBe("created: 2025-09-02T12:00:00.000Z");
+  });
+
+  it("converts a timestamp in a table cell", () => {
+    expect(
+      json2ai(
+        { events: [{ id: 1, at: 1756814400 }, { id: 2, at: 1756814400000 }] },
+        { rename: { "events.at": { type: "date" } } }
+      )
+    ).toBe(
+      "events:\n | index | id | at |\n | --- | --- | --- |\n | 0 | 1 | 2025-09-02T12:00:00.000Z |\n | 1 | 2 | 2025-09-02T12:00:00.000Z |"
+    );
+  });
+
+  it("passes non-numeric values through unchanged with type: date", () => {
+    expect(
+      json2ai({ created: "tomorrow" }, { rename: { created: { type: "date" } } })
+    ).toBe("created: tomorrow");
+  });
+
+  it("combines date conversion with an alias", () => {
+    expect(
+      json2ai({ at: 1756814400 }, { rename: { at: { alias: "when", type: "date" } } })
+    ).toBe("when: 2025-09-02T12:00:00.000Z");
+  });
+
+  it("gives type precedence over unit on a date leaf", () => {
+    expect(
+      json2ai({ at: 1756814400 }, { rename: { at: { type: "date", unit: "s" } } })
+    ).toBe("at: 2025-09-02T12:00:00.000Z");
+  });
+
+  it("applies date transform to an array of primitive leaves", () => {
+    expect(
+      json2ai({ times: [1756814400, 1756814400000] }, { rename: { times: { type: "date" } } })
+    ).toBe("times:\n 2025-09-02T12:00:00.000Z, 2025-09-02T12:00:00.000Z");
+  });
+
+  it("applies unit to an array of primitive leaves", () => {
+    expect(
+      json2ai({ prices: [10, 20] }, { rename: { prices: { unit: "USD" } } })
+    ).toBe("prices:\n 10 USD, 20 USD");
+  });
 });

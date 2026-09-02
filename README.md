@@ -75,6 +75,55 @@ drop. Regenerate the chart with `python3 scripts/plot_tokens.py`.
 | `wrapInCodeBlock`| `boolean`  | `false`  | Wrap output in a fenced Markdown code block.                      |
 | `codeBlockLang`  | `string`   | `"text"` | Fence language for `wrapInCodeBlock`.                             |
 | `omit`           | `string[]` | `[]`     | Key names to drop (e.g. secrets). Matches key names at any depth. |
+| `rename`         | `Record<string, string \| { alias?: string; unit?: string; type?: "date" }>` | `{}` | Remap keys by dotted path to an alias, a unit suffix, and/or a timestamp conversion. Array indices are skipped, so a path like `"users.name"` matches every row. |
+
+### Example: renaming
+
+```ts
+const out = json2ai(
+  { products: [{ name: "a", price: 100, qty: 3 }] },
+  {
+    rename: {
+      "products.name": "title",
+      "products.price": { unit: "USD" },
+      "products.qty": { alias: "count", unit: "pcs" },
+    },
+  }
+);
+```
+
+Produces:
+
+```text
+products:
+ | index | title | price | count |
+ | --- | --- | --- | --- |
+ | 0 | a | 100 USD | 3 pcs |
+```
+
+A path maps either to a string alias (`"products.name": "title"`) or to an object with an
+optional `alias`, an optional `unit`, and an optional `type`. `{ unit: "USD" }` renames
+nothing but appends the unit; `{ alias: "count", unit: "pcs" }` does both. Units apply to
+scalar leaf values only.
+
+`type: "date"` converts a numeric leaf to an ISO 8601 UTC timestamp, auto-detecting
+seconds vs milliseconds by magnitude (`>= 1e12` is milliseconds):
+
+```ts
+const out = json2ai(
+  { user: { name: "ryuyx", created_at: 1756814400 } },
+  { rename: { "user.created_at": { alias: "created", type: "date" } } }
+);
+```
+
+```text
+user:
+ name: ryuyx
+ created: 2025-09-02T12:00:00.000Z
+```
+
+Non-numeric values pass through unchanged. When `type` and `unit` are both set on a date
+leaf, `type` takes precedence.
 
 ## License
 
